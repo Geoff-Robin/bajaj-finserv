@@ -1,16 +1,14 @@
-//YOUR URL LINK FOR GETTING THE WEBHOOK URL DOESN'T WORK
-// Please replace with a valid URL
-//wow. I'm amazed 
-
 package com.example.bajaj_finserv_health;
 
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
-import org.springframework.http.HttpEntity;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.MediaType;
+import org.springframework.http.*;
 import org.springframework.web.client.RestTemplate;
+import org.springframework.core.ParameterizedTypeReference;
+
+import java.util.HashMap;
+import java.util.Map;
 
 @SpringBootApplication
 public class BajajFinservHealthApplication implements CommandLineRunner {
@@ -22,53 +20,63 @@ public class BajajFinservHealthApplication implements CommandLineRunner {
     }
 
     @Override
-    public void run(String... args) throws Exception {
-        String webhookUrl = "https://mock-webhook-url.com/submit";
-        String accessToken = "mock-access-token-123";
+    public void run(String... args) {
+        try {
+            String generateUrl = "https://bfhldevapigw.healthrx.co.in/hiring/generateWebhook/JAVA";
+            Map<String, String> body = new HashMap<>();
+            body.put("name", "John Doe");
+            body.put("regNo", "REG12347");
+            body.put("email", "john@example.com");
 
-        System.out.println("Using mock webhook URL: " + webhookUrl);
-        System.out.println("Using mock access token: " + accessToken);
-        String sqlQuery = solveSqlProblem("26");
-        submitSolution(webhookUrl, accessToken, sqlQuery);
-    }
+            RequestEntity<Map<String, String>> requestEntity =
+                    RequestEntity.post(generateUrl)
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .body(body);
 
-    private String solveSqlProblem(String lastTwoDigits) {
-        return """
-            SELECT 
-                e.EMP_ID,
-                e.FIRST_NAME,
-                e.LAST_NAME,
-                d.DEPARTMENT_NAME,
-                (
-                    SELECT COUNT(*) 
-                    FROM EMPLOYEE e2 
-                    WHERE e2.DEPARTMENT = e.DEPARTMENT 
-                    AND e2.DOB > e.DOB 
-                    AND e2.EMP_ID != e.EMP_ID
-                ) AS YOUNGER_EMPLOYEES_COUNT
-            FROM 
-                EMPLOYEE e
-            JOIN 
-                DEPARTMENT d ON e.DEPARTMENT = d.DEPARTMENT_ID
-            ORDER BY 
-                e.EMP_ID DESC;
-            """;
-    }
+            ResponseEntity<Map<String, Object>> response =
+                    restTemplate.exchange(requestEntity, new ParameterizedTypeReference<>() {});
 
-    private void submitSolution(String webhookUrl, String accessToken, String sqlQuery) {
-        HttpHeaders headers = new HttpHeaders();
-        headers.setContentType(MediaType.APPLICATION_JSON);
-        headers.set("Authorization", "Bearer " + accessToken);
+            if (response.getStatusCode() != HttpStatus.OK || response.getBody() == null)
+                throw new RuntimeException("Failed to get webhook details.");
 
-        String requestBody = """
-            {
-                "finalQuery": "%s"
-            }
-            """.formatted(sqlQuery);
+            Map<String, Object> responseBody = response.getBody();
+            String webhookUrl = responseBody.get("webhook").toString();
+            String accessToken = responseBody.get("accessToken").toString();
 
-        HttpEntity<String> entity = new HttpEntity<>(requestBody, headers);
-        System.out.println("Prepared submission: URL=" + webhookUrl + ", Body=" + requestBody);
-        String response = restTemplate.postForObject(webhookUrl, entity, String.class);
-        System.out.println("Submission response: " + response);
+            String sqlQuery = """
+                SELECT 
+                    e.EMP_ID,
+                    e.FIRST_NAME,
+                    e.LAST_NAME,
+                    d.DEPARTMENT_NAME,
+                    (
+                        SELECT COUNT(*) 
+                        FROM EMPLOYEE e2 
+                        WHERE e2.DEPARTMENT = e.DEPARTMENT 
+                        AND e2.DOB > e.DOB 
+                        AND e2.EMP_ID != e.EMP_ID
+                    ) AS YOUNGER_EMPLOYEES_COUNT
+                FROM 
+                    EMPLOYEE e
+                JOIN 
+                    DEPARTMENT d ON e.DEPARTMENT = d.DEPARTMENT_ID
+                ORDER BY 
+                    e.EMP_ID DESC;
+                """;
+
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_JSON);
+            headers.setBearerAuth(accessToken);
+
+            Map<String, String> finalQueryBody = new HashMap<>();
+            finalQueryBody.put("finalQuery", sqlQuery);
+
+            HttpEntity<Map<String, String>> entity = new HttpEntity<>(finalQueryBody, headers);
+            ResponseEntity<String> submitResponse = restTemplate.postForEntity(webhookUrl, entity, String.class);
+            System.out.println(submitResponse.getBody());
+
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
     }
 }
