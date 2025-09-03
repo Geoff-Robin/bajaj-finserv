@@ -6,7 +6,6 @@
  * 
  */
 
-
 package com.example.bajaj_finserv_health;
 
 import org.springframework.boot.CommandLineRunner;
@@ -37,55 +36,67 @@ public class BajajFinservHealthApplication implements CommandLineRunner {
             body.put("regNo", "REG12347");
             body.put("email", "john@example.com");
 
-            RequestEntity<Map<String, String>> requestEntity =
-                    RequestEntity.post(generateUrl)
-                            .contentType(MediaType.APPLICATION_JSON)
-                            .body(body);
+            RequestEntity<Map<String, String>> requestEntity = RequestEntity.post(generateUrl)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(body);
 
-            ResponseEntity<Map<String, Object>> response =
-                    restTemplate.exchange(requestEntity, new ParameterizedTypeReference<>() {});
+            ResponseEntity<Map<String, Object>> response = restTemplate.exchange(requestEntity,
+                    new ParameterizedTypeReference<>() {
+                    });
 
             if (response.getStatusCode() != HttpStatus.OK || response.getBody() == null)
                 throw new RuntimeException("Failed to get webhook details.");
 
             Map<String, Object> responseBody = response.getBody();
+            System.out.println("Response from generateWebhook: " + responseBody);
+
             String webhookUrl = responseBody.get("webhook").toString();
             String accessToken = responseBody.get("accessToken").toString();
 
+            if (accessToken == null || accessToken.isBlank()) {
+                throw new RuntimeException("Access token is missing. Cannot call webhook.");
+            }
+
+            System.out.println("Webhook URL: " + webhookUrl);
+            System.out.println("Access Token: " + accessToken);
+
             String sqlQuery = """
-                SELECT 
-                    e.EMP_ID,
-                    e.FIRST_NAME,
-                    e.LAST_NAME,
-                    d.DEPARTMENT_NAME,
-                    (
-                        SELECT COUNT(*) 
-                        FROM EMPLOYEE e2 
-                        WHERE e2.DEPARTMENT = e.DEPARTMENT 
-                        AND e2.DOB > e.DOB 
-                        AND e2.EMP_ID != e.EMP_ID
-                    ) AS YOUNGER_EMPLOYEES_COUNT
-                FROM 
-                    EMPLOYEE e
-                JOIN 
-                    DEPARTMENT d ON e.DEPARTMENT = d.DEPARTMENT_ID
-                ORDER BY 
-                    e.EMP_ID DESC;
-                """;
+                    SELECT
+                        e.EMP_ID,
+                        e.FIRST_NAME,
+                        e.LAST_NAME,
+                        d.DEPARTMENT_NAME,
+                        (
+                            SELECT COUNT(*)
+                            FROM EMPLOYEE e2
+                            WHERE e2.DEPARTMENT = e.DEPARTMENT
+                            AND e2.DOB > e.DOB
+                            AND e2.EMP_ID != e.EMP_ID
+                        ) AS YOUNGER_EMPLOYEES_COUNT
+                    FROM
+                        EMPLOYEE e
+                    JOIN
+                        DEPARTMENT d ON e.DEPARTMENT = d.DEPARTMENT_ID
+                    ORDER BY
+                        e.EMP_ID DESC;
+                    """;
 
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.APPLICATION_JSON);
-            headers.setBearerAuth(accessToken);
+            headers.set("Authorization", accessToken);
 
             Map<String, String> finalQueryBody = new HashMap<>();
             finalQueryBody.put("finalQuery", sqlQuery);
 
             HttpEntity<Map<String, String>> entity = new HttpEntity<>(finalQueryBody, headers);
             ResponseEntity<String> submitResponse = restTemplate.postForEntity(webhookUrl, entity, String.class);
-            System.out.println(submitResponse.getBody());
+
+            System.out.println("Webhook Response: " + submitResponse.getStatusCode());
+            System.out.println("Webhook Response Body: " + submitResponse.getBody());
 
         } catch (Exception e) {
             e.printStackTrace();
         }
     }
+
 }
